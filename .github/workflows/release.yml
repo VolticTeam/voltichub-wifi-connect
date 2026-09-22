@@ -1,0 +1,84 @@
+name: Release patched WiFi Connect
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  UPSTREAM_COMMIT: 5bd4c1bea548fb5714bedb18bbd12f088d5fa407
+  RELEASE_TAG: v4.11.84-compat.1
+  ASSET: wifi-connect-aarch64-unknown-linux-gnu.tar.gz
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: rust:1.76-bookworm@sha256:d36f9d8a9a4c76da74c8d983d0d4cb146dd2d19bb9bd60b704cdcf70ef868d3a
+
+    steps:
+      - name: Check out patch repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends \
+            binutils \
+            file \
+            gh \
+            git \
+            libdbus-1-dev \
+            pkg-config
+
+      - name: Fetch pinned upstream source
+        run: |
+          git init /tmp/wifi-connect
+          git -C /tmp/wifi-connect remote add origin \
+            https://github.com/balena-os/wifi-connect.git
+          git -C /tmp/wifi-connect fetch --depth 1 \
+            origin "${UPSTREAM_COMMIT}"
+          git -C /tmp/wifi-connect checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/wifi-connect rev-parse HEAD)" = \
+            "${UPSTREAM_COMMIT}"
+
+      - name: Apply compatibility patch
+        run: |
+          git -C /tmp/wifi-connect apply \
+            "${GITHUB_WORKSPACE}/patches/v4.11.84-networkmanager-compat.patch"
+
+      - name: Build ARM64 binary
+        run: |
+          cargo build \
+            --manifest-path /tmp/wifi-connect/Cargo.toml \
+            --release \
+            --locked
+
+      - name: Verify and package
+        run: |
+          binary=/tmp/wifi-connect/target/release/wifi-connect
+
+          "${binary}" --help >/dev/null
+          file "${binary}"
+          readelf -h "${binary}" | grep -q 'Machine:.*AArch64'
+          ! ldd "${binary}" | grep -q 'not found'
+
+          mkdir -p dist/package
+          install -m 0755 "${binary}" dist/package/wifi-connect
+          install -m 0644 /tmp/wifi-connect/LICENSE dist/package/LICENSE
+
+          tar -C dist/package -czf "dist/${ASSET}" wifi-connect LICENSE
+          sha256sum "dist/${ASSET}" > "dist/${ASSET}.sha256"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${RELEASE_TAG}" \
+            "dist/${ASSET}" \
+            "dist/${ASSET}.sha256" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${GITHUB_SHA}" \
+            --title "${RELEASE_TAG}" \
+            --notes "WiFi Connect v4.11.84 built from ${UPSTREAM_COMMIT} with a NetworkManager compatibility patch."

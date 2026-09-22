@@ -1,0 +1,16 @@
+diff --git a/src/network.rs b/src/network.rs
+index 6e747d5..d14d0b3 100644
+--- a/src/network.rs
++++ b/src/network.rs
+@@ -534,2 +534,10 @@ fn delete_exising_wifi_connect_ap_profile(ssid: &str) -> Result<()> {
+-    for connection in &manager.get_connections()? {
++    let connections = match manager.get_connections() {
++        Ok(connections) => connections,
++        Err(error) => {
++            warn!("Skipping stale access-point cleanup: {}", error);
++            return Ok(());
++        }
++    };
++
++    for connection in &connections {
+         if is_access_point_connection(connection) && is_same_ssid(connection, ssid) {
