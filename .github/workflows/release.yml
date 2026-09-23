@@ -8,7 +8,7 @@ permissions:
 
 env:
   UPSTREAM_COMMIT: 5bd4c1bea548fb5714bedb18bbd12f088d5fa407
-  RELEASE_TAG: v4.11.84-compat.1
+  RELEASE_TAG: v4.11.84-hostapd.1
   ASSET: wifi-connect-aarch64-unknown-linux-gnu.tar.gz
 
 jobs:
@@ -43,13 +43,16 @@ jobs:
           test "$(git -C /tmp/wifi-connect rev-parse HEAD)" = \
             "${UPSTREAM_COMMIT}"
 
-      - name: Apply compatibility patch
+      - name: Apply VolticHub patch
         run: |
-          git -C /tmp/wifi-connect apply \
-            "${GITHUB_WORKSPACE}/patches/v4.11.84-networkmanager-compat.patch"
+          git -C /tmp/wifi-connect apply --unidiff-zero \
+            "${GITHUB_WORKSPACE}/patches/v4.11.84-hostapd-backend.patch"
 
-      - name: Build ARM64 binary
+      - name: Test and build ARM64 binary
         run: |
+          cargo test \
+            --manifest-path /tmp/wifi-connect/Cargo.toml \
+            --locked
           cargo build \
             --manifest-path /tmp/wifi-connect/Cargo.toml \
             --release \
@@ -81,4 +84,4 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --target "${GITHUB_SHA}" \
             --title "${RELEASE_TAG}" \
-            --notes "WiFi Connect v4.11.84 built from ${UPSTREAM_COMMIT} with a NetworkManager compatibility patch."
+            --notes "WiFi Connect v4.11.84 built from ${UPSTREAM_COMMIT} with the VolticHub hostapd backend and NetworkManager compatibility patch."
