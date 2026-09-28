@@ -1,0 +1,17 @@
+.connection-steps {
+	align-self: stretch;
+	margin: 0 0 28px;
+	padding-left: 24px;
+	color: #374151;
+	line-height: 1.55;
+}
+
+.connection-steps li {
+	padding-left: 6px;
+	margin: 8px 0;
+}
+
+.connection-steps li::marker {
+	color: #09c3f9;
+	font-weight: 700;
+}
