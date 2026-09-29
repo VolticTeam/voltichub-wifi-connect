@@ -1,0 +1,352 @@
+diff --git a/src/errors.rs b/src/errors.rs
+index 0c9c7c1..8049866 100644
+--- a/src/errors.rs
++++ b/src/errors.rs
+@@ -93,0 +94,19 @@ error_chain! {
++        HostapdConfig(reason: String) {
++            description("Preparing hostapd configuration failed")
++            display("Preparing hostapd configuration failed: {}", reason)
++        }
++
++        HostapdCommand(command: String) {
++            description("Running hostapd network command failed")
++            display("Running hostapd network command failed: {}", command)
++        }
++
++        HostapdStart {
++            description("Starting hostapd failed")
++        }
++
++        HostapdExited(status: i32) {
++            description("hostapd exited during startup")
++            display("hostapd exited during startup with status {}", status)
++        }
++
+@@ -131,0 +151,4 @@ pub fn exit_code(e: &Error) -> i32 {
++        ErrorKind::HostapdConfig(_) => 25,
++        ErrorKind::HostapdCommand(_) => 26,
++        ErrorKind::HostapdStart => 27,
++        ErrorKind::HostapdExited(_) => 28,
+diff --git a/src/hostapd.rs b/src/hostapd.rs
+new file mode 100644
+index 0000000..27edc0e
+--- /dev/null
++++ b/src/hostapd.rs
+@@ -0,0 +1,243 @@
++use std::fs::{self, OpenOptions};
++use std::io::Write;
++use std::net::Ipv4Addr;
++use std::os::unix::fs::OpenOptionsExt;
++use std::path::PathBuf;
++use std::process::{Child, Command};
++use std::thread;
++use std::time::Duration;
++
++use errors::*;
++
++const HOSTAPD_BIN: &str = "/usr/sbin/hostapd";
++const IP_BIN: &str = "/usr/sbin/ip";
++const NMCLI_BIN: &str = "/usr/bin/nmcli";
++const SYSTEMCTL_BIN: &str = "/usr/bin/systemctl";
++const WPA_SUPPLICANT_SERVICE: &str = "wpa_supplicant.service";
++
++pub struct HostapdPortal {
++    interface: String,
++    gateway: Ipv4Addr,
++    config_path: PathBuf,
++    child: Option<Child>,
++    cleaned: bool,
++}
++
++impl HostapdPortal {
++    pub fn start(
++        interface: &str,
++        ssid: &str,
++        gateway: &Ipv4Addr,
++        passphrase: Option<&str>,
++    ) -> Result<Self> {
++        let config = render_config(interface, ssid, passphrase)
++            .map_err(|reason| ErrorKind::HostapdConfig(reason))?;
++        let config_path =
++            config_path(interface).map_err(|reason| ErrorKind::HostapdConfig(reason))?;
++
++        let mut file = OpenOptions::new()
++            .write(true)
++            .create(true)
++            .truncate(true)
++            .mode(0o600)
++            .open(&config_path)
++            .chain_err(|| ErrorKind::HostapdConfig("Cannot create runtime config".into()))?;
++        file.write_all(config.as_bytes())
++            .map_err(|error| {
++                let _ = fs::remove_file(&config_path);
++                error
++            })
++            .chain_err(|| ErrorKind::HostapdConfig("Cannot write runtime config".into()))?;
++
++        let mut portal = HostapdPortal {
++            interface: interface.to_string(),
++            gateway: *gateway,
++            config_path,
++            child: None,
++            cleaned: false,
++        };
++
++        if let Err(error) = portal.start_impl() {
++            let _ = portal.cleanup();
++            return Err(error);
++        }
++
++        Ok(portal)
++    }
++
++    fn start_impl(&mut self) -> Result<()> {
++        run_command(
++            NMCLI_BIN,
++            &["device", "set", &self.interface, "managed", "no"],
++        )?;
++        run_command(SYSTEMCTL_BIN, &["stop", WPA_SUPPLICANT_SERVICE])?;
++
++        let address = format!("{}/24", self.gateway);
++        run_command(
++            IP_BIN,
++            &["address", "replace", &address, "dev", &self.interface],
++        )?;
++
++        info!("Starting hostapd access point...");
++        let child = Command::new(HOSTAPD_BIN)
++            .arg(&self.config_path)
++            .spawn()
++            .chain_err(|| ErrorKind::HostapdStart)?;
++        self.child = Some(child);
++
++        thread::sleep(Duration::from_secs(1));
++        if let Some(status) = self
++            .child
++            .as_mut()
++            .expect("hostapd child missing")
++            .try_wait()
++            .chain_err(|| ErrorKind::HostapdStart)?
++        {
++            bail!(ErrorKind::HostapdExited(status.code().unwrap_or(-1)));
++        }
++
++        info!("hostapd access point started");
++        Ok(())
++    }
++
++    pub fn stop(&mut self) -> Result<()> {
++        self.cleanup()
++    }
++
++    fn cleanup(&mut self) -> Result<()> {
++        if self.cleaned {
++            return Ok(());
++        }
++
++        if let Some(mut child) = self.child.take() {
++            let _ = child.kill();
++            let _ = child.wait();
++        }
++
++        let address = format!("{}/24", self.gateway);
++        let _ = Command::new(IP_BIN)
++            .args(&["address", "del", &address, "dev", &self.interface])
++            .status();
++
++        let supplicant_result = run_command(SYSTEMCTL_BIN, &["start", WPA_SUPPLICANT_SERVICE]);
++        let managed_result = run_command(
++            NMCLI_BIN,
++            &["device", "set", &self.interface, "managed", "yes"],
++        );
++        let _ = fs::remove_file(&self.config_path);
++        thread::sleep(Duration::from_secs(1));
++        if supplicant_result.is_ok() && managed_result.is_ok() {
++            self.cleaned = true;
++        }
++        supplicant_result.and(managed_result)
++    }
++}
++
++impl Drop for HostapdPortal {
++    fn drop(&mut self) {
++        let _ = self.cleanup();
++    }
++}
++
++fn run_command(command: &str, args: &[&str]) -> Result<()> {
++    let status = Command::new(command)
++        .args(args)
++        .status()
++        .chain_err(|| ErrorKind::HostapdCommand(command.into()))?;
++
++    if !status.success() {
++        bail!(ErrorKind::HostapdCommand(command.into()));
++    }
++
++    Ok(())
++}
++
++fn config_path(interface: &str) -> ::std::result::Result<PathBuf, String> {
++    if interface.is_empty()
++        || !interface
++            .chars()
++            .all(|character| character.is_ascii_alphanumeric() || "_.-".contains(character))
++    {
++        return Err("Invalid interface name".into());
++    }
++
++    Ok(PathBuf::from(format!(
++        "/run/wifi-connect-hostapd-{}.conf",
++        interface
++    )))
++}
++
++fn render_config(
++    interface: &str,
++    ssid: &str,
++    passphrase: Option<&str>,
++) -> ::std::result::Result<String, String> {
++    config_path(interface)?;
++    if ssid.is_empty() || ssid.as_bytes().len() > 32 || ssid.contains('\n') || ssid.contains('\r') {
++        return Err("Invalid portal SSID".into());
++    }
++    if let Some(value) = passphrase {
++        if value.len() < 8
++            || value.len() > 63
++            || !value.is_ascii()
++            || value.contains('\n')
++            || value.contains('\r')
++        {
++            return Err("Invalid portal passphrase".into());
++        }
++    }
++
++    let mut config = format!(
++        "interface={}\ndriver=nl80211\nssid={}\nhw_mode=g\nchannel=1\nieee80211n=1\nwmm_enabled=1\nauth_algs=1\n",
++        interface, ssid
++    );
++    if let Some(value) = passphrase {
++        config.push_str(&format!(
++            "wpa=2\nwpa_key_mgmt=WPA-PSK\nrsn_pairwise=CCMP\nwpa_passphrase={}\n",
++            value
++        ));
++    }
++
++    Ok(config)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::{config_path, render_config};
++
++    #[test]
++    fn renders_wpa2_ccmp_config_without_exposing_legacy_ciphers() {
++        let config = render_config("wlan0", "Test-Portal", Some("testpass")).unwrap();
++
++        assert!(config.contains("interface=wlan0\n"));
++        assert!(config.contains("ssid=Test-Portal\n"));
++        assert!(config.contains("wpa=2\n"));
++        assert!(config.contains("wpa_key_mgmt=WPA-PSK\n"));
++        assert!(config.contains("rsn_pairwise=CCMP\n"));
++        assert!(config.contains("wpa_passphrase=testpass\n"));
++        assert!(!config.contains("TKIP"));
++    }
++
++    #[test]
++    fn renders_open_config_without_wpa_directives() {
++        let config = render_config("wlan0", "Test-Portal", None).unwrap();
++
++        assert!(!config.contains("wpa="));
++        assert!(!config.contains("wpa_passphrase="));
++    }
++
++    #[test]
++    fn rejects_hostapd_config_injection() {
++        assert!(render_config("wlan0", "valid\nchannel=11", None).is_err());
++        assert!(render_config("wlan0", "valid", Some("valid123\nwpa=0")).is_err());
++        assert!(config_path("../wlan0").is_err());
++    }
++
++    #[test]
++    fn uses_root_runtime_path_for_safe_interface() {
++        assert_eq!(
++            config_path("wlan0").unwrap().to_str().unwrap(),
++            "/run/wifi-connect-hostapd-wlan0.conf"
++        );
++    }
++}
+diff --git a/src/main.rs b/src/main.rs
+index 4a27ee8..bfccf40 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -30,0 +31 @@ mod exit;
++mod hostapd;
+diff --git a/src/network.rs b/src/network.rs
+index 6e747d5..89b4063 100644
+--- a/src/network.rs
++++ b/src/network.rs
+@@ -16,0 +17 @@ use exit::{exit, trap_exit_signals, ExitResult};
++use hostapd::HostapdPortal;
+@@ -44 +45 @@ struct NetworkCommandHandler {
+-    portal_connection: Option<Connection>,
++    portal: Option<HostapdPortal>,
+@@ -65 +66 @@ impl NetworkCommandHandler {
+-        let portal_connection = Some(create_portal(&device, config)?);
++        let portal = Some(create_portal(&device, config)?);
+@@ -82 +83 @@ impl NetworkCommandHandler {
+-            portal_connection,
++            portal,
+@@ -198,2 +199,2 @@ impl NetworkCommandHandler {
+-        if let Some(ref connection) = self.portal_connection {
+-            let _ = stop_portal_impl(connection, &self.config);
++        if let Some(ref mut portal) = self.portal {
++            let _ = stop_portal_impl(portal, &self.config);
+@@ -218,2 +219,2 @@ impl NetworkCommandHandler {
+-        if let Some(ref connection) = self.portal_connection {
+-            stop_portal(connection, &self.config)?;
++        if let Some(ref mut portal) = self.portal {
++            stop_portal(portal, &self.config)?;
+@@ -222 +223 @@ impl NetworkCommandHandler {
+-        self.portal_connection = None;
++        self.portal = None;
+@@ -267 +268 @@ impl NetworkCommandHandler {
+-        self.portal_connection = Some(create_portal(&self.device, &self.config)?);
++        self.portal = Some(create_portal(&self.device, &self.config)?);
+@@ -441 +442 @@ fn find_access_point<'a>(access_points: &'a [AccessPoint], ssid: &str) -> Option
+-fn create_portal(device: &Device, config: &Config) -> Result<Connection> {
++fn create_portal(device: &Device, config: &Config) -> Result<HostapdPortal> {
+@@ -453 +454 @@ fn create_portal_impl(
+-) -> Result<Connection> {
++) -> Result<HostapdPortal> {
+@@ -455,2 +456 @@ fn create_portal_impl(
+-    let wifi_device = device.as_wifi_device().unwrap();
+-    let (portal_connection, _) = wifi_device.create_hotspot(ssid, *passphrase, Some(*gateway))?;
++    let portal = HostapdPortal::start(device.interface(), ssid, gateway, *passphrase)?;
+@@ -458 +458 @@ fn create_portal_impl(
+-    Ok(portal_connection)
++    Ok(portal)
+@@ -461,2 +461,2 @@ fn create_portal_impl(
+-fn stop_portal(connection: &Connection, config: &Config) -> Result<()> {
+-    stop_portal_impl(connection, config).chain_err(|| ErrorKind::StopAccessPoint)
++fn stop_portal(portal: &mut HostapdPortal, config: &Config) -> Result<()> {
++    stop_portal_impl(portal, config).chain_err(|| ErrorKind::StopAccessPoint)
+@@ -465 +465 @@ fn stop_portal(connection: &Connection, config: &Config) -> Result<()> {
+-fn stop_portal_impl(connection: &Connection, config: &Config) -> Result<()> {
++fn stop_portal_impl(portal: &mut HostapdPortal, config: &Config) -> Result<()> {
+@@ -467,3 +467 @@ fn stop_portal_impl(connection: &Connection, config: &Config) -> Result<()> {
+-    connection.deactivate()?;
+-    connection.delete()?;
+-    thread::sleep(Duration::from_secs(1));
++    portal.stop()?;
+@@ -534 +532,9 @@ fn delete_exising_wifi_connect_ap_profile(ssid: &str) -> Result<()> {
+-    for connection in &manager.get_connections()? {
++    let connections = match manager.get_connections() {
++        Ok(connections) => connections,
++        Err(error) => {
++            warn!("Skipping stale access-point cleanup: {}", error);
++            return Ok(());
++        }
++    };
++
++    for connection in &connections {
