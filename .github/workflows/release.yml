@@ -62,8 +62,8 @@ jobs:
           npm run build
           mkdir -p "${GITHUB_WORKSPACE}/dist"
           tar -C build -czf "${GITHUB_WORKSPACE}/dist/${UI_ASSET}" .
-          sha256sum "${GITHUB_WORKSPACE}/dist/${UI_ASSET}" \
-            > "${GITHUB_WORKSPACE}/dist/${UI_ASSET}.sha256"
+          (cd "${GITHUB_WORKSPACE}/dist" && \
+            sha256sum "${UI_ASSET}" > "${UI_ASSET}.sha256")
 
       - name: Build ARM64 binary
         run: |
