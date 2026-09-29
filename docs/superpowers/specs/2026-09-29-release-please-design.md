@@ -17,10 +17,11 @@ whether it is `fix`, `feat`, or breaking:
 
 Use the Release Please manifest for the current version and its `release-as`
 action input for the calculated next version. Derive the next counter from the
-latest tag matching `v4.11.84-voltic.<N>`. The manifest starts at the `.0`
-sentinel because no Voltic release tag is present; the first generated release
-is `.1`. After that bootstrap, fail closed if the manifest and latest tag are
-not sequential. Configure tags without a component prefix. Do not enable
+latest tag matching `v4.11.84-voltic.<N>`. The manifest starts at the current
+`4.11.84-voltic.1` version, so the next generated release is `.2`. If there is
+no tag yet, allow only that initial `.1` baseline or the pending `.2` release;
+afterward, fail closed if the manifest and latest tag are not sequential.
+Configure tags without a component prefix. Do not enable
 GitHub prerelease mode; preserve the current workflow's published release
 status.
 
@@ -41,8 +42,8 @@ status.
 
 ## Scope
 
-- Add root Release Please manifest/configuration initialized at
-  `4.11.84-voltic.0`; this sentinel is never published.
+- Add root Release Please manifest/configuration initialized at the current
+  `4.11.84-voltic.1` version.
 - Update the release workflow to calculate the counter, run Release Please on
   pushes to `master`, and build only when it creates a release.
 - Use the action's emitted tag for the release build and asset upload.
@@ -53,9 +54,9 @@ No source-code, upstream patch, UI, or downstream Ansible changes are included.
 
 ## Risks and checks
 
-- The local clone has no `v4.11.84-voltic.N` tag. Bootstrap `.1` from the `.0`
-  manifest sentinel, and fail closed if the manifest later gets ahead of the
-  latest tag by more than one.
+- The local clone has no `v4.11.84-voltic.N` tag, so use manifest `.1` as the
+  current-version baseline and generate `.2` next. Fail closed if the manifest
+  later gets ahead of the latest tag by more than one.
 - Validate that non-releasable commit types do not create release PRs when the
   dynamic `release-as` value is supplied, and that each releasable type uses
   the same next global counter.
