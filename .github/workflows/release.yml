@@ -8,8 +8,9 @@ permissions:
 
 env:
   UPSTREAM_COMMIT: 5bd4c1bea548fb5714bedb18bbd12f088d5fa407
-  RELEASE_TAG: v4.11.84-hostapd.1
+  RELEASE_TAG: v4.11.84-voltic.1
   ASSET: wifi-connect-aarch64-unknown-linux-gnu.tar.gz
+  UI_ASSET: wifi-connect-ui.tar.gz
 
 jobs:
   release:
@@ -30,6 +31,8 @@ jobs:
             gh \
             git \
             libdbus-1-dev \
+            nodejs \
+            npm \
             pkg-config
 
       - name: Fetch pinned upstream source
@@ -48,7 +51,21 @@ jobs:
           git -C /tmp/wifi-connect apply --unidiff-zero \
             "${GITHUB_WORKSPACE}/patches/v4.11.84-hostapd-backend.patch"
 
-      - name: Test and build ARM64 binary
+      - name: Use Voltic hotspot UI
+        run: |
+          cp -a "${GITHUB_WORKSPACE}/ui/." /tmp/wifi-connect/ui/
+
+      - name: Build and package hotspot UI
+        run: |
+          cd /tmp/wifi-connect/ui
+          npm ci
+          npm run build
+          mkdir -p "${GITHUB_WORKSPACE}/dist"
+          tar -C build -czf "${GITHUB_WORKSPACE}/dist/${UI_ASSET}" .
+          (cd "${GITHUB_WORKSPACE}/dist" && \
+            sha256sum "${UI_ASSET}" > "${UI_ASSET}.sha256")
+
+      - name: Build ARM64 binary
         run: |
           cargo test \
             --manifest-path /tmp/wifi-connect/Cargo.toml \
@@ -81,7 +98,9 @@ jobs:
           gh release create "${RELEASE_TAG}" \
             "dist/${ASSET}" \
             "dist/${ASSET}.sha256" \
+            "dist/${UI_ASSET}" \
+            "dist/${UI_ASSET}.sha256" \
             --repo "${GITHUB_REPOSITORY}" \
             --target "${GITHUB_SHA}" \
             --title "${RELEASE_TAG}" \
-            --notes "WiFi Connect v4.11.84 built from ${UPSTREAM_COMMIT} with the VolticHub hostapd backend and NetworkManager compatibility patch."
+            --notes "WiFi Connect v4.11.84 built from ${UPSTREAM_COMMIT} with the NetworkManager compatibility patch and Voltic hotspot UI."

@@ -1,0 +1,56 @@
+* {
+	box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+	min-height: 100%;
+}
+
+body {
+	margin: 0;
+	background: #f5fafc;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select {
+	font: inherit;
+}
+
+.portal-main {
+	min-height: calc(100vh - 64px);
+	padding: clamp(24px, 7vh, 72px) 16px;
+}
+
+.portal-card {
+	width: min(100%, 620px);
+	margin: 0 auto;
+	padding: clamp(20px, 5vw, 40px);
+	border: 1px solid #e2edf2;
+	border-radius: 16px;
+	background: #fff;
+	box-shadow: 0 12px 36px rgba(0, 54, 75, 0.08);
+}
+
+.portal-card h3 {
+	color: #00364b;
+	font-weight: 600;
+}
+
+.portal-card input,
+.portal-card select {
+	border-radius: 8px;
+}
+
+.portal-card button {
+	border-radius: 8px;
+	font-weight: 600;
+}
+
+code {
+	font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}

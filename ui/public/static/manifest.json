@@ -1,0 +1,15 @@
+{
+  "short_name": "Voltic Wi-Fi",
+  "name": "Voltic Wi-Fi setup",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "200x200",
+      "type": "image/png"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#09c3f9",
+  "background_color": "#f5fafc"
+}
