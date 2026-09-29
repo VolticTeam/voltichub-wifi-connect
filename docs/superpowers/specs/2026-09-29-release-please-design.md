@@ -15,12 +15,14 @@ whether it is `fix`, `feat`, or breaking:
 
 `v4.11.84-voltic.1` → `v4.11.84-voltic.2` → `v4.11.84-voltic.3`.
 
-Use the Release Please manifest for the current version and its supported
-`release-as` action input for the calculated next version. On each run, derive
-the next counter from the latest tag matching `v4.11.84-voltic.<N>`. Fail
-closed if no valid prior tag is found; do not silently restart the sequence.
-Configure tags without a component prefix. Do not enable GitHub prerelease
-mode; preserve the current workflow's published release status.
+Use the Release Please manifest for the current version and its `release-as`
+action input for the calculated next version. Derive the next counter from the
+latest tag matching `v4.11.84-voltic.<N>`. The manifest starts at the `.0`
+sentinel because no Voltic release tag is present; the first generated release
+is `.1`. After that bootstrap, fail closed if the manifest and latest tag are
+not sequential. Configure tags without a component prefix. Do not enable
+GitHub prerelease mode; preserve the current workflow's published release
+status.
 
 ## Flow
 
@@ -39,8 +41,8 @@ mode; preserve the current workflow's published release status.
 
 ## Scope
 
-- Add root Release Please manifest/configuration initialized from the current
-  `4.11.84-voltic.1` release.
+- Add root Release Please manifest/configuration initialized at
+  `4.11.84-voltic.0`; this sentinel is never published.
 - Update the release workflow to calculate the counter, run Release Please on
   pushes to `master`, and build only when it creates a release.
 - Use the action's emitted tag for the release build and asset upload.
@@ -51,14 +53,15 @@ No source-code, upstream patch, UI, or downstream Ansible changes are included.
 
 ## Risks and checks
 
-- Verify `v4.11.84-voltic.1` exists on the remote before bootstrapping; the
-  local clone currently has only the earlier `compat` and `hostapd` tags.
+- The local clone has no `v4.11.84-voltic.N` tag. Bootstrap `.1` from the `.0`
+  manifest sentinel, and fail closed if the manifest later gets ahead of the
+  latest tag by more than one.
 - Validate that non-releasable commit types do not create release PRs when the
   dynamic `release-as` value is supplied, and that each releasable type uses
   the same next global counter.
 - Confirm the action token can create the release PR and release. Build assets
   only after Release Please reports `release_created == 'true'`.
-- Confirm manual dispatch accepts only an existing tag matching
-  `v4.11.84-voltic.<N>` and only uploads to that release.
+- Confirm manual dispatch accepts only an existing tag with `N >= 1` and only
+  uploads to that release.
 - Validate the config JSON and workflow YAML, inspect the diff, and verify tag,
   release, and asset names. Do not publish a release during local validation.
