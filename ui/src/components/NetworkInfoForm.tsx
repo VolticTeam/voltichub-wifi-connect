@@ -64,11 +64,13 @@ const isEnterpriseNetwork = (
 
 interface NetworkInfoFormProps {
 	availableNetworks: Network[];
+	isSubmitting: boolean;
 	onSubmit: (data: NetworkInfo) => void;
 }
 
 export const NetworkInfoForm = ({
 	availableNetworks,
+	isSubmitting,
 	onSubmit,
 }: NetworkInfoFormProps) => {
 	const [data, setData] = React.useState<NetworkInfo>({});
@@ -105,7 +107,7 @@ export const NetworkInfoForm = ({
 					width: '60%',
 					mx: '20%',
 					mt: 3,
-					disabled: availableNetworks.length <= 0,
+					disabled: availableNetworks.length <= 0 || isSubmitting,
 				}}
 				submitButtonText={'Conectar'}
 			/>

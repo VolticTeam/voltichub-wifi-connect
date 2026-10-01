@@ -18,6 +18,7 @@ export interface Network {
 
 const App = () => {
 	const [attemptedConnect, setAttemptedConnect] = React.useState(false);
+	const [isSubmitting, setIsSubmitting] = React.useState(false);
 	const [isFetchingNetworks, setIsFetchingNetworks] = React.useState(true);
 	const [error, setError] = React.useState('');
 	const [availableNetworks, setAvailableNetworks] = React.useState<Network[]>(
@@ -43,7 +44,8 @@ const App = () => {
 	}, []);
 
 	const onConnect = (data: NetworkInfo) => {
-		setAttemptedConnect(true);
+		setAttemptedConnect(false);
+		setIsSubmitting(true);
 		setError('');
 
 		fetch('/connect', {
@@ -57,9 +59,13 @@ const App = () => {
 				if (resp.status !== 200) {
 					throw new Error(resp.statusText);
 				}
+				setAttemptedConnect(true);
 			})
 			.catch((e: Error) => {
-				setError(`No se pudo iniciar la conexión. ${e.message || e}`);
+				setError(`No se pudo confirmar el envío. ${e.message || e}`);
+			})
+			.finally(() => {
+				setIsSubmitting(false);
 			});
 	};
 
@@ -87,6 +93,7 @@ const App = () => {
 				<Container>
 					<Notifications
 						attemptedConnect={attemptedConnect}
+						isSubmitting={isSubmitting}
 						hasAvailableNetworks={
 							isFetchingNetworks || availableNetworks.length > 0
 						}
@@ -94,6 +101,7 @@ const App = () => {
 					/>
 					<NetworkInfoForm
 						availableNetworks={availableNetworks}
+						isSubmitting={isSubmitting}
 						onSubmit={onConnect}
 					/>
 				</Container>

@@ -4,21 +4,29 @@ import { Txt, Alert } from 'rendition';
 export const Notifications = ({
 	hasAvailableNetworks,
 	attemptedConnect,
+	isSubmitting,
 	error,
 }: {
 	hasAvailableNetworks: boolean;
 	attemptedConnect: boolean;
+	isSubmitting: boolean;
 	error: string;
 }) => {
 	return (
 		<>
+			{isSubmitting && (
+				<Alert m={2} info>
+					<Txt.span>Enviando los datos de la red Wi-Fi al hub...</Txt.span>
+				</Alert>
+			)}
 			{attemptedConnect && (
 				<Alert m={2} info>
-					<Txt.span>Conectando el hub... </Txt.span>
+					<Txt.span>Datos recibidos. Comprobando la conexión... </Txt.span>
 					<Txt.span>
-						Espera a que se conecte a la red Wi-Fi y obtenga Internet. Si no lo
-						consigue, el hotspot volverá a aparecer en unos minutos; entonces
-						podrás recargar esta página e intentarlo otra vez.
+						La red temporal se desconectará mientras el hub comprueba la
+						contraseña y el acceso a Internet. Si el hotspot vuelve a aparecer,
+						la conexión no se ha completado: vuelve a abrir esta página y revisa
+						la contraseña y la red seleccionada.
 					</Txt.span>
 				</Alert>
 			)}
