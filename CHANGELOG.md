@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.11.84-voltic.3](https://github.com/VolticTeam/voltichub-wifi-connect/compare/v4.11.84-voltic.2...v4.11.84-voltic.3) (2026-10-01)
+
+
+### Bug Fixes
+
+* **release:** trust checkout inside build container ([46b2b61](https://github.com/VolticTeam/voltichub-wifi-connect/commit/46b2b617d31b6567757d6307defde4c71bec8b5b))
+* **release:** trust checkout inside build container ([bd33c56](https://github.com/VolticTeam/voltichub-wifi-connect/commit/bd33c565c1001501ea6b566e126ae215c67cb006))
+* **release:** write portable binary checksum ([f0a3816](https://github.com/VolticTeam/voltichub-wifi-connect/commit/f0a3816e6fbcd99f001ee4b231d78b8489cd9095))
+* **release:** write portable binary checksum ([c2fc11f](https://github.com/VolticTeam/voltichub-wifi-connect/commit/c2fc11f543dcc138481250bdd006744dbb61a487))
+* **ui:** clarify Wi-Fi connection progress ([#11](https://github.com/VolticTeam/voltichub-wifi-connect/issues/11)) ([1a1afe5](https://github.com/VolticTeam/voltichub-wifi-connect/commit/1a1afe5610b6f9e09874a5fcdf32ce7f075b2faa))
+* **ui:** mejora la vista móvil del portal Wi-Fi ([#10](https://github.com/VolticTeam/voltichub-wifi-connect/issues/10)) ([95886a7](https://github.com/VolticTeam/voltichub-wifi-connect/commit/95886a75538c8a28532560322973d5305c9c4a5a))
+
 ## [4.11.84-voltic.2](https://github.com/VolticTeam/voltichub-wifi-connect/compare/v4.11.84-voltic.1...v4.11.84-voltic.2) (2026-10-01)
 
 
