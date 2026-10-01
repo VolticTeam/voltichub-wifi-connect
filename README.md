@@ -17,6 +17,8 @@ NetworkManager client-connection flow. During the access-point window it:
 
 The patch also makes stale access-point cleanup non-fatal when the legacy
 NetworkManager D-Bus client cannot deserialize an unrelated profile.
+It lets `hostapd` receive SIGTERM and waits briefly for a clean stop before
+falling back to SIGKILL, so the Wi-Fi radio can scan after portal submission.
 
 Runtime dependencies are `hostapd`, `iproute2`, `network-manager`, `dnsmasq-base`
 and `libdbus-1-3`. The program still requires root privileges.
