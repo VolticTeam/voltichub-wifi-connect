@@ -72,11 +72,14 @@ const App = () => {
 					borderBottom: '1px solid #e2edf2',
 				}}
 				brand={
-					<img
-						src={logo}
-						style={{ height: 40, width: 40, borderRadius: 10 }}
-						alt="Voltic"
-					/>
+					<div className="portal-brand">
+						<img
+							src={logo}
+							style={{ height: 40, width: 40, borderRadius: 10 }}
+							alt="Voltic"
+						/>
+						<span>VolticHub Wi-Fi Connect</span>
+					</div>
 				}
 			/>
 

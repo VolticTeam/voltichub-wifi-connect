@@ -21,6 +21,14 @@ select {
 	font: inherit;
 }
 
+.portal-brand {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	font-size: clamp(14px, 3.8vw, 18px);
+	font-weight: 600;
+}
+
 .portal-main {
 	min-height: calc(100vh - 64px);
 	padding: clamp(24px, 7vh, 72px) 16px;
@@ -49,6 +57,26 @@ select {
 .portal-card button {
 	border-radius: 8px;
 	font-weight: 600;
+}
+
+@media (max-width: 600px) {
+	.portal-main {
+		padding: 16px 0 32px;
+	}
+
+	.portal-card {
+		padding: 20px 16px;
+	}
+
+	.portal-card h3 {
+		font-size: clamp(20px, 5.5vw, 24px);
+	}
+
+	.portal-card form button[type='submit'] {
+		width: 100%;
+		min-height: 48px;
+		margin: 16px 0 0;
+	}
 }
 
 code {
