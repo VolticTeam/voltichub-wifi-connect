@@ -21,6 +21,14 @@ select {
 	font: inherit;
 }
 
+.portal-brand {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	font-size: clamp(14px, 3.8vw, 18px);
+	font-weight: 600;
+}
+
 .portal-main {
 	min-height: calc(100vh - 64px);
 	padding: clamp(24px, 7vh, 72px) 16px;
