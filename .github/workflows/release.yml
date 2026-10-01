@@ -223,7 +223,7 @@ jobs:
           install -m 0644 /tmp/wifi-connect/LICENSE dist/package/LICENSE
 
           tar -C dist/package -czf "dist/${ASSET}" wifi-connect LICENSE
-          sha256sum "dist/${ASSET}" > "dist/${ASSET}.sha256"
+          (cd dist && sha256sum "${ASSET}" > "${ASSET}.sha256")
 
       - name: Upload assets to GitHub Release
         env:
