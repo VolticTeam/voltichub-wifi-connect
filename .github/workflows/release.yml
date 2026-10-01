@@ -1,26 +1,112 @@
 name: Release patched WiFi Connect
 
 on:
+  push:
+    branches:
+      - master
   workflow_dispatch:
-
-permissions:
-  contents: write
-
-env:
-  UPSTREAM_COMMIT: 5bd4c1bea548fb5714bedb18bbd12f088d5fa407
-  RELEASE_TAG: v4.11.84-voltic.1
-  ASSET: wifi-connect-aarch64-unknown-linux-gnu.tar.gz
-  UI_ASSET: wifi-connect-ui.tar.gz
+    inputs:
+      release_tag:
+        description: Existing Voltic release tag to rebuild, for example v4.11.84-voltic.1
+        required: true
+        type: string
 
 jobs:
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Check out repository and tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate next Voltic release number
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          manifest_version=$(jq -er '.["."]' .release-please-manifest.json)
+          if [[ ! "$manifest_version" =~ ^4\.11\.84-voltic\.([0-9]+)$ ]]; then
+            echo "Unexpected manifest version: ${manifest_version}" >&2
+            exit 1
+          fi
+          manifest_number=$((10#${BASH_REMATCH[1]}))
+
+          mapfile -t tags < <(git tag --list 'v4.11.84-voltic.*' --sort=-version:refname)
+          latest_tag=${tags[0]:-}
+          if [[ -z "$latest_tag" ]]; then
+            if (( manifest_number == 1 )); then
+              next_number=2
+            elif (( manifest_number == 2 )); then
+              # A merged first Release Please PR has updated the manifest but is not tagged yet.
+              next_number=2
+            else
+              echo "No Voltic release tag found for manifest ${manifest_version}" >&2
+              exit 1
+            fi
+          elif [[ "$latest_tag" =~ ^v4\.11\.84-voltic\.([1-9][0-9]*)$ ]]; then
+            latest_number=$((10#${BASH_REMATCH[1]}))
+            if (( manifest_number == latest_number )); then
+              next_number=$((latest_number + 1))
+            elif (( manifest_number == latest_number + 1 )); then
+              # A merged Release Please PR has updated the manifest but is not tagged yet.
+              next_number=$manifest_number
+            else
+              echo "Manifest ${manifest_version} and latest tag ${latest_tag} are out of sequence" >&2
+              exit 1
+            fi
+          else
+            echo "Unexpected Voltic release tag: ${latest_tag}" >&2
+            exit 1
+          fi
+
+          echo "release_as=4.11.84-voltic.${next_number}" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update Release Please PR
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target-branch: master
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+          release-as: ${{ steps.version.outputs.release_as }}
+
   release:
+    needs: release-please
+    if: |
+      always() &&
+      (
+        (github.event_name == 'push' &&
+          needs.release-please.result == 'success' &&
+          needs.release-please.outputs.release_created == 'true') ||
+        github.event_name == 'workflow_dispatch'
+      )
     runs-on: ubuntu-24.04-arm
     container:
       image: rust:1.76-bookworm@sha256:d36f9d8a9a4c76da74c8d983d0d4cb146dd2d19bb9bd60b704cdcf70ef868d3a
+    permissions:
+      contents: write
+    env:
+      UPSTREAM_COMMIT: 5bd4c1bea548fb5714bedb18bbd12f088d5fa407
+      ASSET: wifi-connect-aarch64-unknown-linux-gnu.tar.gz
+      UI_ASSET: wifi-connect-ui.tar.gz
 
     steps:
-      - name: Check out patch repository
+      - name: Check out repository and tags
         uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
 
       - name: Install build dependencies
         run: |
@@ -34,6 +120,39 @@ jobs:
             nodejs \
             npm \
             pkg-config
+
+      - name: Validate target release
+        id: target
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          AUTO_RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then
+            release_tag="$INPUT_RELEASE_TAG"
+          else
+            release_tag="$AUTO_RELEASE_TAG"
+          fi
+
+          if [[ ! "$release_tag" =~ ^v4\.11\.84-voltic\.[1-9][0-9]*$ ]]; then
+            echo "Invalid Voltic release tag: ${release_tag}" >&2
+            exit 1
+          fi
+          git rev-parse --verify --quiet "refs/tags/${release_tag}" >/dev/null || {
+            echo "Tag does not exist: ${release_tag}" >&2
+            exit 1
+          }
+          gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null
+          echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.release_tag }}
 
       - name: Fetch pinned upstream source
         run: |
@@ -91,16 +210,15 @@ jobs:
           tar -C dist/package -czf "dist/${ASSET}" wifi-connect LICENSE
           sha256sum "dist/${ASSET}" > "dist/${ASSET}.sha256"
 
-      - name: Publish GitHub Release
+      - name: Upload assets to GitHub Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
         run: |
-          gh release create "${RELEASE_TAG}" \
+          gh release upload "${RELEASE_TAG}" \
             "dist/${ASSET}" \
             "dist/${ASSET}.sha256" \
             "dist/${UI_ASSET}" \
             "dist/${UI_ASSET}.sha256" \
             --repo "${GITHUB_REPOSITORY}" \
-            --target "${GITHUB_SHA}" \
-            --title "${RELEASE_TAG}" \
-            --notes "WiFi Connect v4.11.84 built from ${UPSTREAM_COMMIT} with the NetworkManager compatibility patch and Voltic hotspot UI."
+            --clobber
