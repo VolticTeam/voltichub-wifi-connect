@@ -15,3 +15,13 @@
 	color: #09c3f9;
 	font-weight: 700;
 }
+
+@media (max-width: 600px) {
+	.connection-steps {
+		margin-bottom: 20px;
+	}
+
+	.connection-steps li {
+		margin: 6px 0;
+	}
+}

@@ -51,6 +51,26 @@ select {
 	font-weight: 600;
 }
 
+@media (max-width: 600px) {
+	.portal-main {
+		padding: 16px 0 32px;
+	}
+
+	.portal-card {
+		padding: 20px 16px;
+	}
+
+	.portal-card h3 {
+		font-size: clamp(20px, 5.5vw, 24px);
+	}
+
+	.portal-card form button[type='submit'] {
+		width: 100%;
+		min-height: 48px;
+		margin: 16px 0 0;
+	}
+}
+
 code {
 	font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
