@@ -145,6 +145,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
           if [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then
             release_tag="$INPUT_RELEASE_TAG"
