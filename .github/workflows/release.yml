@@ -71,7 +71,7 @@ jobs:
 
           echo "release_as=4.11.84-voltic.${next_number}" >> "$GITHUB_OUTPUT"
 
-      - name: Create or update Release Please PR
+      - name: Publish merged Release Please PR
         id: release
         uses: googleapis/release-please-action@v4
         with:
@@ -79,7 +79,21 @@ jobs:
           target-branch: master
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
-          release-as: ${{ steps.version.outputs.release_as }}
+          skip-github-pull-request: true
+
+      - name: Create or update Release Please PR
+        if: steps.release.outputs.release_created != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_AS: ${{ steps.version.outputs.release_as }}
+        run: |
+          npx --yes release-please@17.6.0 release-pr \
+            --repo-url="$GITHUB_REPOSITORY" \
+            --target-branch=master \
+            --token="$GITHUB_TOKEN" \
+            --config-file=.release-please-config.json \
+            --manifest-file=.release-please-manifest.json \
+            --release-as="$RELEASE_AS"
 
   release:
     needs: release-please

@@ -15,8 +15,9 @@ whether it is `fix`, `feat`, or breaking:
 
 `v4.11.84-voltic.1` → `v4.11.84-voltic.2` → `v4.11.84-voltic.3`.
 
-Use the Release Please manifest for the current version and its `release-as`
-action input for the calculated next version. Derive the next counter from the
+Use the Release Please manifest and the CLI's `--release-as` flag for the
+calculated next version. The action ignores `release-as` in manifest mode.
+Derive the next counter from the
 latest tag matching `v4.11.84-voltic.<N>`. The manifest starts at the current
 `4.11.84-voltic.1` version, so the next generated release is `.2`. If there is
 no tag yet, allow only that initial `.1` baseline or the pending `.2` release;
@@ -28,8 +29,8 @@ status.
 ## Flow
 
 1. On pushes to `master`, fetch tags and derive the next fixed-base version.
-   Release Please opens or updates the release PR using Conventional Commits
-   and the `release-as` value.
+   The pinned Release Please CLI opens or updates the release PR using
+   Conventional Commits and the `release-as` value.
 2. When the release PR is merged and Release Please creates a release, use its
    `tag_name` output to build and attach the existing ARM64 binary, UI archive,
    and SHA-256 files to that release.
@@ -60,8 +61,8 @@ No source-code, upstream patch, UI, or downstream Ansible changes are included.
 - Validate that non-releasable commit types do not create release PRs when the
   dynamic `release-as` value is supplied, and that each releasable type uses
   the same next global counter.
-- Confirm the action token can create the release PR and release. Build assets
-  only after Release Please reports `release_created == 'true'`.
+- Confirm the CLI creates the release PR and the action creates the release.
+  Build assets only after Release Please reports `release_created == 'true'`.
 - Confirm manual dispatch accepts only an existing tag with `N >= 1` and only
   uploads to that release.
 - Validate the config JSON and workflow YAML, inspect the diff, and verify tag,
