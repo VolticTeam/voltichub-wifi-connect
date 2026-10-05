@@ -54,7 +54,6 @@ autoconnect=true
 ssid=Example hidden network
 mode=infrastructure
 hidden=true
-security=wifi-security
 
 [wifi-security]
 key-mgmt=wpa-psk
