@@ -34,7 +34,7 @@ export const Notifications = ({
 				<Alert m={2} warning>
 					<Txt.span>No hay redes Wi-Fi disponibles.&nbsp;</Txt.span>
 					<Txt.span>
-						Comprueba que haya una red al alcance y reinicia el hub.
+						Si tu red es oculta, introduce el SSID manualmente.
 					</Txt.span>
 				</Alert>
 			)}

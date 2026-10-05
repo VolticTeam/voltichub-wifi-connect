@@ -27,6 +27,125 @@ index 0c9c7c1..8049866 100644
 +        ErrorKind::HostapdCommand(_) => 26,
 +        ErrorKind::HostapdStart => 27,
 +        ErrorKind::HostapdExited(_) => 28,
+diff --git a/src/hidden.rs b/src/hidden.rs
+new file mode 100644
+index 0000000..4681050
+--- /dev/null
++++ b/src/hidden.rs
+@@ -0,0 +1,113 @@
++use std::fs::{self, OpenOptions};
++use std::io::{self, Write};
++use std::os::unix::fs::OpenOptionsExt;
++use std::path::PathBuf;
++use std::process::Command;
++
++const NMCLI: &str = "/usr/bin/nmcli";
++
++pub fn valid_credentials(ssid: &str, passphrase: &str) -> bool {
++    let ssid_len = ssid.as_bytes().len();
++    let pass_len = passphrase.as_bytes().len();
++    (1..=32).contains(&ssid_len)
++        && !ssid.contains('\0')
++        && !ssid.contains('\n')
++        && !ssid.contains('\r')
++        && ((8..=63).contains(&pass_len)
++            || (pass_len == 64 && passphrase.bytes().all(|byte| byte.is_ascii_hexdigit())))
++        && !passphrase.contains('\0')
++        && !passphrase.contains('\n')
++        && !passphrase.contains('\r')
++}
++
++fn profile_args<'a>(interface: &'a str, ssid: &'a str, uuid: &'a str) -> Vec<&'a str> {
++    vec![
++        "connection", "add", "save", "yes", "type", "wifi", "ifname", interface,
++        "con-name", ssid, "connection.uuid", uuid,
++        "802-11-wireless.ssid", ssid, "802-11-wireless.hidden", "yes",
++        "wifi-sec.key-mgmt", "wpa-psk",
++    ]
++}
++
++fn run_nmcli(args: &[&str]) -> io::Result<bool> {
++    Ok(Command::new(NMCLI).args(args).output()?.status.success())
++}
++
++fn secret_saved(uuid: &str, passphrase: &str) -> io::Result<bool> {
++    let output = Command::new(NMCLI)
++        .args(&["--show-secrets", "--escape", "no", "-g", "wifi-sec.psk", "connection", "show", "uuid", uuid])
++        .output()?;
++    Ok(output.status.success()
++        && output.stdout.strip_suffix(b"\n") == Some(passphrase.as_bytes()))
++}
++
++fn delete_profile(uuid: &str) {
++    if !run_nmcli(&["connection", "delete", "uuid", uuid]).unwrap_or(false) {
++        warn!("Could not remove failed hidden Wi-Fi profile");
++    }
++}
++
++struct SecretFile(PathBuf);
++
++impl Drop for SecretFile {
++    fn drop(&mut self) {
++        let _ = fs::remove_file(&self.0);
++    }
++}
++
++pub fn connect(interface: &str, ssid: &str, passphrase: &str) -> io::Result<bool> {
++    let uuid = fs::read_to_string("/proc/sys/kernel/random/uuid")?;
++    let uuid = uuid.trim();
++    let path = PathBuf::from(format!("/run/wifi-connect-{}.secret", uuid));
++    let mut file = OpenOptions::new()
++        .write(true)
++        .create_new(true)
++        .mode(0o600)
++        .open(&path)?;
++    let secret = SecretFile(path);
++    writeln!(file, "802-11-wireless-security.psk:{}", passphrase)?;
++    drop(file);
++
++    match run_nmcli(&profile_args(interface, ssid, uuid)) {
++        Ok(true) => {}
++        result => {
++            delete_profile(uuid);
++            return result;
++        }
++    }
++
++    let result = run_nmcli(&[
++        "--wait", "90", "connection", "up", "uuid", uuid,
++        "ifname", interface, "passwd-file", secret.0.to_str().unwrap(),
++    ])
++    .and_then(|connected| if connected { secret_saved(uuid, passphrase) } else { Ok(false) });
++    if !result.as_ref().map(|connected| *connected).unwrap_or(false) {
++        delete_profile(uuid);
++    }
++    result
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn validates_hidden_wpa_credentials() {
++        assert!(valid_credentials("Hotel oculto", "testpass123"));
++        assert!(valid_credentials("é".repeat(16).as_str(), "a1".repeat(32).as_str()));
++        assert!(!valid_credentials("", "testpass123"));
++        assert!(!valid_credentials("é".repeat(17).as_str(), "testpass123"));
++        assert!(!valid_credentials("Hotel", "short"));
++        assert!(!valid_credentials("Hotel", "testpass\nother"));
++        assert!(!valid_credentials("Hotel", &"g".repeat(64)));
++    }
++
++    #[test]
++    fn creates_a_hidden_wpa_profile_without_secret_arguments() {
++        let args = profile_args("wlan0", "Hotel oculto", "test-uuid");
++        assert!(args.windows(2).any(|pair| pair[0] == "802-11-wireless.hidden" && pair[1] == "yes"));
++        assert!(args.windows(2).any(|pair| pair[0] == "wifi-sec.key-mgmt" && pair[1] == "wpa-psk"));
++        assert!(args.windows(2).any(|pair| pair[0] == "save" && pair[1] == "yes"));
++        assert!(!args.iter().any(|arg| arg.contains("testpass123")));
++    }
++}
 diff --git a/src/hostapd.rs b/src/hostapd.rs
 new file mode 100644
 index 0000000..38d9153
@@ -303,69 +422,182 @@ index 0000000..38d9153
 +    }
 +}
 diff --git a/src/main.rs b/src/main.rs
-index 4a27ee8..bfccf40 100644
+index 4a27ee8..4425d44 100644
 --- a/src/main.rs
 +++ b/src/main.rs
-@@ -30,0 +31 @@ mod exit;
+@@ -30,0 +31,2 @@ mod exit;
 +mod hostapd;
++mod hidden;
 diff --git a/src/network.rs b/src/network.rs
-index 6e747d5..89b4063 100644
+index 6e747d5..8cc0e27 100644
 --- a/src/network.rs
 +++ b/src/network.rs
-@@ -16,0 +17 @@ use exit::{exit, trap_exit_signals, ExitResult};
+@@ -16,0 +17,2 @@ use exit::{exit, trap_exit_signals, ExitResult};
 +use hostapd::HostapdPortal;
-@@ -44 +45 @@ struct NetworkCommandHandler {
++use hidden;
+@@ -26,0 +29 @@ pub enum NetworkCommand {
++        hidden: bool,
+@@ -44 +47 @@ struct NetworkCommandHandler {
 -    portal_connection: Option<Connection>,
 +    portal: Option<HostapdPortal>,
-@@ -65 +66 @@ impl NetworkCommandHandler {
+@@ -65 +68 @@ impl NetworkCommandHandler {
 -        let portal_connection = Some(create_portal(&device, config)?);
 +        let portal = Some(create_portal(&device, config)?);
-@@ -82 +83 @@ impl NetworkCommandHandler {
+@@ -82 +85 @@ impl NetworkCommandHandler {
 -            portal_connection,
 +            portal,
-@@ -198,2 +199,2 @@ impl NetworkCommandHandler {
+@@ -174,0 +178 @@ impl NetworkCommandHandler {
++                    hidden,
+@@ -176 +180 @@ impl NetworkCommandHandler {
+-                    if self.connect(&ssid, &identity, &passphrase)? {
++                    if self.connect(&ssid, &identity, &passphrase, hidden)? {
+@@ -198,2 +202,2 @@ impl NetworkCommandHandler {
 -        if let Some(ref connection) = self.portal_connection {
 -            let _ = stop_portal_impl(connection, &self.config);
 +        if let Some(ref mut portal) = self.portal {
 +            let _ = stop_portal_impl(portal, &self.config);
-@@ -218,2 +219,2 @@ impl NetworkCommandHandler {
+@@ -215,5 +219,7 @@ impl NetworkCommandHandler {
+-    fn connect(&mut self, ssid: &str, identity: &str, passphrase: &str) -> Result<bool> {
+-        delete_existing_connections_to_same_network(&self.manager, ssid);
+-
 -        if let Some(ref connection) = self.portal_connection {
 -            stop_portal(connection, &self.config)?;
++    fn connect(&mut self, ssid: &str, identity: &str, passphrase: &str, hidden: bool) -> Result<bool> {
++        if hidden && !hidden::valid_credentials(ssid, passphrase) {
++            warn!("Invalid hidden Wi-Fi credentials");
++            return Ok(false);
++        }
++        if !hidden {
++            delete_existing_connections_to_same_network(&self.manager, ssid);
+@@ -222,8 +228,3 @@ impl NetworkCommandHandler {
+-        self.portal_connection = None;
+-
+-        self.access_points = get_access_points(&self.device)?;
+-
+-        if let Some(access_point) = find_access_point(&self.access_points, ssid) {
+-            let wifi_device = self.device.as_wifi_device().unwrap();
+-
+-            info!("Connecting to access point '{}'...", ssid);
 +        if let Some(ref mut portal) = self.portal {
 +            stop_portal(portal, &self.config)?;
-@@ -222 +223 @@ impl NetworkCommandHandler {
--        self.portal_connection = None;
++        }
+@@ -231 +232 @@ impl NetworkCommandHandler {
+-            let credentials = init_access_point_credentials(access_point, identity, passphrase);
 +        self.portal = None;
-@@ -267 +268 @@ impl NetworkCommandHandler {
+@@ -233,9 +234,33 @@ impl NetworkCommandHandler {
+-            match wifi_device.connect(access_point, &credentials) {
+-                Ok((connection, state)) => {
+-                    if state == ConnectionState::Activated {
+-                        match wait_for_connectivity(&self.manager, 20) {
+-                            Ok(has_connectivity) => {
+-                                if has_connectivity {
+-                                    info!("Internet connectivity established");
+-                                } else {
+-                                    warn!("Cannot establish Internet connectivity");
++        if hidden {
++            match hidden::connect(self.device.interface(), ssid, passphrase) {
++                Ok(true) => {
++                    info!("Connected to hidden access point '{}'", ssid);
++                    match wait_for_connectivity(&self.manager, 20) {
++                        Ok(true) => info!("Internet connectivity established"),
++                        Ok(false) => warn!("Cannot establish Internet connectivity"),
++                        Err(err) => error!("Getting Internet connectivity failed: {}", err),
++                    }
++                    return Ok(true);
++                }
++                Ok(false) => warn!("Hidden Wi-Fi connection failed"),
++                Err(err) => warn!("Hidden Wi-Fi connection failed: {}", err),
++            }
++        } else {
++            self.access_points = get_access_points(&self.device)?;
++            if let Some(access_point) = find_access_point(&self.access_points, ssid) {
++                let wifi_device = self.device.as_wifi_device().unwrap();
++
++                info!("Connecting to access point '{}'...", ssid);
++
++                let credentials = init_access_point_credentials(access_point, identity, passphrase);
++
++                match wifi_device.connect(access_point, &credentials) {
++                    Ok((connection, state)) => {
++                        if state == ConnectionState::Activated {
++                            match wait_for_connectivity(&self.manager, 20) {
++                                Ok(has_connectivity) => {
++                                    if has_connectivity {
++                                        info!("Internet connectivity established");
++                                    } else {
++                                        warn!("Cannot establish Internet connectivity");
++                                    }
+@@ -242,0 +268 @@ impl NetworkCommandHandler {
++                                Err(err) => error!("Getting Internet connectivity failed: {}", err),
+@@ -244 +270,2 @@ impl NetworkCommandHandler {
+-                            Err(err) => error!("Getting Internet connectivity failed: {}", err),
++
++                            return Ok(true);
+@@ -247,2 +274,3 @@ impl NetworkCommandHandler {
+-                        return Ok(true);
+-                    }
++                        if let Err(err) = connection.delete() {
++                            error!("Deleting connection object failed: {}", err)
++                        }
+@@ -250,2 +278,7 @@ impl NetworkCommandHandler {
+-                    if let Err(err) = connection.delete() {
+-                        error!("Deleting connection object failed: {}", err)
++                        warn!(
++                            "Connection to access point not activated '{}': {:?}",
++                            ssid, state
++                        );
++                    }
++                    Err(e) => {
++                        warn!("Error connecting to access point '{}': {}", ssid, e);
+@@ -253,8 +285,0 @@ impl NetworkCommandHandler {
+-
+-                    warn!(
+-                        "Connection to access point not activated '{}': {:?}",
+-                        ssid, state
+-                    );
+-                }
+-                Err(e) => {
+-                    warn!("Error connecting to access point '{}': {}", ssid, e);
+@@ -265 +290,8 @@ impl NetworkCommandHandler {
+-        self.access_points = get_access_points(&self.device)?;
++        self.access_points = if hidden {
++            get_access_points(&self.device).unwrap_or_else(|err| {
++                warn!("Refreshing access points after hidden connection failed: {}", err);
++                vec![]
++            })
++        } else {
++            get_access_points(&self.device)?
++        };
+@@ -267 +299 @@ impl NetworkCommandHandler {
 -        self.portal_connection = Some(create_portal(&self.device, &self.config)?);
 +        self.portal = Some(create_portal(&self.device, &self.config)?);
-@@ -441 +442 @@ fn find_access_point<'a>(access_points: &'a [AccessPoint], ssid: &str) -> Option
+@@ -441 +473 @@ fn find_access_point<'a>(access_points: &'a [AccessPoint], ssid: &str) -> Option
 -fn create_portal(device: &Device, config: &Config) -> Result<Connection> {
 +fn create_portal(device: &Device, config: &Config) -> Result<HostapdPortal> {
-@@ -453 +454 @@ fn create_portal_impl(
+@@ -453 +485 @@ fn create_portal_impl(
 -) -> Result<Connection> {
 +) -> Result<HostapdPortal> {
-@@ -455,2 +456 @@ fn create_portal_impl(
+@@ -455,2 +487 @@ fn create_portal_impl(
 -    let wifi_device = device.as_wifi_device().unwrap();
 -    let (portal_connection, _) = wifi_device.create_hotspot(ssid, *passphrase, Some(*gateway))?;
 +    let portal = HostapdPortal::start(device.interface(), ssid, gateway, *passphrase)?;
-@@ -458 +458 @@ fn create_portal_impl(
+@@ -458 +489 @@ fn create_portal_impl(
 -    Ok(portal_connection)
 +    Ok(portal)
-@@ -461,2 +461,2 @@ fn create_portal_impl(
+@@ -461,2 +492,2 @@ fn create_portal_impl(
 -fn stop_portal(connection: &Connection, config: &Config) -> Result<()> {
 -    stop_portal_impl(connection, config).chain_err(|| ErrorKind::StopAccessPoint)
 +fn stop_portal(portal: &mut HostapdPortal, config: &Config) -> Result<()> {
 +    stop_portal_impl(portal, config).chain_err(|| ErrorKind::StopAccessPoint)
-@@ -465 +465 @@ fn stop_portal(connection: &Connection, config: &Config) -> Result<()> {
+@@ -465 +496 @@ fn stop_portal(connection: &Connection, config: &Config) -> Result<()> {
 -fn stop_portal_impl(connection: &Connection, config: &Config) -> Result<()> {
 +fn stop_portal_impl(portal: &mut HostapdPortal, config: &Config) -> Result<()> {
-@@ -467,3 +467 @@ fn stop_portal_impl(connection: &Connection, config: &Config) -> Result<()> {
+@@ -467,3 +498 @@ fn stop_portal_impl(connection: &Connection, config: &Config) -> Result<()> {
 -    connection.deactivate()?;
 -    connection.delete()?;
 -    thread::sleep(Duration::from_secs(1));
 +    portal.stop()?;
-@@ -534 +532,9 @@ fn delete_exising_wifi_connect_ap_profile(ssid: &str) -> Result<()> {
+@@ -534 +563,9 @@ fn delete_exising_wifi_connect_ap_profile(ssid: &str) -> Result<()> {
 -    for connection in &manager.get_connections()? {
 +    let connections = match manager.get_connections() {
 +        Ok(connections) => connections,
@@ -376,3 +608,29 @@ index 6e747d5..89b4063 100644
 +    };
 +
 +    for connection in &connections {
+diff --git a/src/server.rs b/src/server.rs
+index b0cca7c..49d033c 100644
+--- a/src/server.rs
++++ b/src/server.rs
+@@ -21,0 +22 @@ use exit::{exit, ExitResult};
++use hidden;
+@@ -207 +208 @@ fn connect(req: &mut Request) -> IronResult<Response> {
+-    let (ssid, identity, passphrase) = {
++    let (ssid, identity, passphrase, hidden) = {
+@@ -212 +213,8 @@ fn connect(req: &mut Request) -> IronResult<Response> {
+-        (ssid, identity, passphrase)
++        let hidden = match params.get("hidden") {
++            None => false,
++            Some(value) => match bool::from_value(value) {
++                Some(hidden) => hidden,
++                None => return Ok(Response::with(status::BadRequest)),
++            },
++        };
++        (ssid, identity, passphrase, hidden)
+@@ -214,0 +223,4 @@ fn connect(req: &mut Request) -> IronResult<Response> {
++    if hidden && !hidden::valid_credentials(&ssid, &passphrase) {
++        return Ok(Response::with(status::BadRequest));
++    }
++
+@@ -222,0 +235 @@ fn connect(req: &mut Request) -> IronResult<Response> {
++        hidden,

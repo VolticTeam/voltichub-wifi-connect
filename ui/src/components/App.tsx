@@ -9,6 +9,7 @@ export interface NetworkInfo {
 	ssid?: string;
 	identity?: string;
 	passphrase?: string;
+	hidden?: boolean;
 }
 
 export interface Network {
@@ -56,6 +57,9 @@ const App = () => {
 			},
 		})
 			.then((resp) => {
+				if (resp.status === 400 && data.hidden) {
+					throw new Error('Revisa el SSID y la contraseña de la red oculta.');
+				}
 				if (resp.status !== 200) {
 					throw new Error(resp.statusText);
 				}
