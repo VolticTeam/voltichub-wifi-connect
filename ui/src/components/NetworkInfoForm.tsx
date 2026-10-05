@@ -111,8 +111,12 @@ export const NetworkInfoForm = ({
 					type="checkbox"
 					checked={manual}
 					onChange={(event) => {
-						setManual(event.target.checked);
-						setData({ ...data, ssid: '' });
+						const isManual = event.target.checked;
+						setManual(isManual);
+						setData({
+							...data,
+							ssid: isManual ? '' : availableNetworks[0]?.ssid,
+						});
 						setValidationError('');
 					}}
 				/>{' '}
