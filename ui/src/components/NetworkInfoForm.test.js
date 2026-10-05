@@ -67,6 +67,33 @@ it('keeps the scanned-network submission unchanged', async () => {
 	root.remove();
 });
 
+it('restores a scanned SSID when leaving manual mode', async () => {
+	const root = document.createElement('div');
+	document.body.appendChild(root);
+	const onSubmit = jest.fn();
+	await act(async () => {
+		ReactDOM.render(
+			<Provider theme={volticTheme}>
+				<NetworkInfoForm
+					availableNetworks={[{ ssid: 'Hotel visible', security: 'wpa' }]}
+					isSubmitting={false}
+					onSubmit={onSubmit}
+				/>
+			</Provider>,
+			root,
+		);
+	});
+	const manual = root.querySelector('input[type="checkbox"]');
+	act(() => manual.click());
+	act(() => manual.click());
+	act(() => root.querySelector('button[type="submit"]').click());
+	expect(onSubmit).toHaveBeenCalledWith(
+		expect.objectContaining({ ssid: 'Hotel visible', hidden: false }),
+	);
+	ReactDOM.unmountComponentAtNode(root);
+	root.remove();
+});
+
 it('rejects a manual SSID longer than 32 UTF-8 bytes', async () => {
 	const root = document.createElement('div');
 	document.body.appendChild(root);
