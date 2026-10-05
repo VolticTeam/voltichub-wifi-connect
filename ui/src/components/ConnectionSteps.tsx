@@ -2,7 +2,9 @@ import './ConnectionSteps.css';
 
 export const ConnectionSteps = () => (
 	<ol className="connection-steps">
-		<li>Selecciona la red Wi-Fi del hotel.</li>
+		<li>
+			Selecciona la red Wi-Fi del hotel o introduce su SSID si está oculta.
+		</li>
 		<li>Escribe la contraseña y pulsa «Conectar».</li>
 		<li>
 			Espera unos minutos a que el hub se conecte y obtenga Internet. Mantén el

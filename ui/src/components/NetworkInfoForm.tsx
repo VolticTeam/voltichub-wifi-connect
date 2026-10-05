@@ -5,17 +5,24 @@ import { Flex, Form, Heading } from 'rendition';
 import { ConnectionSteps } from './ConnectionSteps';
 import type { Network, NetworkInfo } from './App';
 
-const getSchema = (availableNetworks: Network[]): JSONSchema => ({
+const getSchema = (
+	availableNetworks: Network[],
+	manual: boolean,
+): JSONSchema => ({
 	type: 'object',
 	properties: {
 		ssid: {
 			title: 'Red Wi-Fi',
 			type: 'string',
-			default: availableNetworks[0]?.ssid,
-			oneOf: availableNetworks.map((network) => ({
-				const: network.ssid,
-				title: network.ssid,
-			})),
+			...(manual
+				? { minLength: 1, maxLength: 32 }
+				: {
+						default: availableNetworks[0]?.ssid,
+						oneOf: availableNetworks.map((network) => ({
+							const: network.ssid,
+							title: network.ssid,
+						})),
+					}),
 		},
 		identity: {
 			title: 'Usuario',
@@ -26,14 +33,20 @@ const getSchema = (availableNetworks: Network[]): JSONSchema => ({
 			title: 'Contraseña',
 			type: 'string',
 			default: '',
+			...(manual ? { minLength: 8, maxLength: 64 } : {}),
 		},
 	},
-	required: ['ssid'],
+	required: manual ? ['ssid', 'passphrase'] : ['ssid'],
 });
 
-const getUiSchema = (isEnterprise: boolean): RenditionUiSchema => ({
+const getUiSchema = (
+	isEnterprise: boolean,
+	manual: boolean,
+): RenditionUiSchema => ({
 	ssid: {
-		'ui:placeholder': 'Selecciona una red Wi-Fi',
+		'ui:placeholder': manual
+			? 'Escribe el SSID de la red oculta'
+			: 'Selecciona una red Wi-Fi',
 		'ui:options': {
 			emphasized: true,
 		},
@@ -74,6 +87,8 @@ export const NetworkInfoForm = ({
 	onSubmit,
 }: NetworkInfoFormProps) => {
 	const [data, setData] = React.useState<NetworkInfo>({});
+	const [manual, setManual] = React.useState(false);
+	const [validationError, setValidationError] = React.useState('');
 
 	const isSelectedNetworkEnterprise = isEnterpriseNetwork(
 		availableNetworks,
@@ -91,6 +106,19 @@ export const NetworkInfoForm = ({
 				Conecta tu VolticHub a la red Wi-Fi
 			</Heading.h3>
 			<ConnectionSteps />
+			<label>
+				<input
+					type="checkbox"
+					checked={manual}
+					onChange={(event) => {
+						setManual(event.target.checked);
+						setData({ ...data, ssid: '' });
+						setValidationError('');
+					}}
+				/>{' '}
+				Introducir SSID manualmente
+			</label>
+			{validationError && <p role="alert">{validationError}</p>}
 
 			<Form
 				width={['100%', '80%', '60%', '40%']}
@@ -98,16 +126,22 @@ export const NetworkInfoForm = ({
 					setData(formData);
 				}}
 				onFormSubmit={({ formData }) => {
-					onSubmit(formData);
+					const ssidBytes = new Blob([formData.ssid || '']).size;
+					if (manual && (ssidBytes < 1 || ssidBytes > 32)) {
+						setValidationError('El SSID debe tener entre 1 y 32 bytes.');
+						return;
+					}
+					setValidationError('');
+					onSubmit({ ...formData, hidden: manual });
 				}}
 				value={data}
-				schema={getSchema(availableNetworks)}
-				uiSchema={getUiSchema(isSelectedNetworkEnterprise)}
+				schema={getSchema(availableNetworks, manual)}
+				uiSchema={getUiSchema(isSelectedNetworkEnterprise, manual)}
 				submitButtonProps={{
 					width: '60%',
 					mx: '20%',
 					mt: 3,
-					disabled: availableNetworks.length <= 0 || isSubmitting,
+					disabled: (!manual && availableNetworks.length <= 0) || isSubmitting,
 				}}
 				submitButtonText={'Conectar'}
 			/>

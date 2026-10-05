@@ -20,12 +20,34 @@ jest.mock('./NetworkInfoForm', () => {
 	const React = require('react');
 	return {
 		NetworkInfoForm: ({ onSubmit }) =>
-			React.createElement(
-				'button',
-				{ onClick: () => onSubmit({ ssid: 'test' }) },
-				'Conectar',
+			React.createElement('div', null,
+				React.createElement('button', { onClick: () => onSubmit({ ssid: 'test' }) }, 'Conectar'),
+				React.createElement('button', {
+					onClick: () => onSubmit({ ssid: 'Hotel oculto', identity: '', passphrase: 'testpass123', hidden: true }),
+				}, 'Oculta'),
 			),
 	};
+});
+
+it('posts the hidden flag and manual credentials to /connect', async () => {
+	const root = document.createElement('div');
+	document.body.appendChild(root);
+	global.fetch = jest.fn((url) =>
+		Promise.resolve(url === '/networks'
+			? { status: 200, json: () => Promise.resolve([]) }
+			: { status: 200, statusText: 'OK' }),
+	);
+	await act(async () => {
+		ReactDOM.render(<App />, root);
+	});
+	await act(async () => {
+		[...root.querySelectorAll('button')].find((button) => button.textContent === 'Oculta').click();
+	});
+	expect(global.fetch).toHaveBeenCalledWith('/connect', expect.objectContaining({
+		body: JSON.stringify({ ssid: 'Hotel oculto', identity: '', passphrase: 'testpass123', hidden: true }),
+	}));
+	ReactDOM.unmountComponentAtNode(root);
+	root.remove();
 });
 
 it('only shows accepted feedback after /connect succeeds', async () => {
