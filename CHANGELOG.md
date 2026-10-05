@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.11.84-voltic.4](https://github.com/VolticTeam/voltichub-wifi-connect/compare/v4.11.84-voltic.3...v4.11.84-voltic.4) (2026-10-05)
+
+
+### Features
+
+* **wifi:** conectar con redes Wi‑Fi ocultas ([#12](https://github.com/VolticTeam/voltichub-wifi-connect/issues/12)) ([7b41953](https://github.com/VolticTeam/voltichub-wifi-connect/commit/7b41953bb7dd08d253d05d37bfed20e7fa5e70ff))
+
 ## [4.11.84-voltic.3](https://github.com/VolticTeam/voltichub-wifi-connect/compare/v4.11.84-voltic.2...v4.11.84-voltic.3) (2026-10-01)
 
 
