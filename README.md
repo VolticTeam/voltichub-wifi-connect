@@ -61,9 +61,12 @@ key-mgmt=wpa-psk
 psk=REPLACE_WITH_WIFI_PASSWORD
 
 [ipv4]
+dns=1.1.1.1;8.8.8.8;
+ignore-auto-dns=true
 method=auto
 
 [ipv6]
+addr-gen-mode=default
 method=auto
 ```
 
