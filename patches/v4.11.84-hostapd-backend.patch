@@ -70,7 +70,7 @@ index 0000000..4681050
 +
 +fn secret_saved(uuid: &str, passphrase: &str) -> io::Result<bool> {
 +    let output = Command::new(NMCLI)
-+        .args(&["--show-secrets", "--escape", "no", "-g", "wifi-sec.psk", "connection", "show", "uuid", uuid])
++        .args(&["--show-secrets", "--escape", "no", "-g", "802-11-wireless-security.psk", "connection", "show", "uuid", uuid])
 +        .output()?;
 +    Ok(output.status.success()
 +        && output.stdout.strip_suffix(b"\n") == Some(passphrase.as_bytes()))
