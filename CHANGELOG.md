@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.11.84-voltic.5](https://github.com/VolticTeam/voltichub-wifi-connect/compare/v4.11.84-voltic.4...v4.11.84-voltic.5) (2026-10-06)
+
+
+### Bug Fixes
+
+* **wifi:** preserve activated hidden connection ([#14](https://github.com/VolticTeam/voltichub-wifi-connect/issues/14)) ([e17e2c9](https://github.com/VolticTeam/voltichub-wifi-connect/commit/e17e2c999080d56c84330239e0a4f730fb691489))
+
 ## [4.11.84-voltic.4](https://github.com/VolticTeam/voltichub-wifi-connect/compare/v4.11.84-voltic.3...v4.11.84-voltic.4) (2026-10-05)
 
 
